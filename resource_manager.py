@@ -62,4 +62,4 @@ def send_results_to_ec2(user_id, matrix):
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=False)

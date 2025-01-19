@@ -5,10 +5,10 @@ import json
 app = Flask(__name__)
 
 # AWS SQS Configuration (Replace with your actual SQS URL)
-SQS_QUEUE_URL = 'https://sqs.YOUR_REGION.amazonaws.com/YOUR_ACCOUNT_ID/YOUR_QUEUE_NAME'
+SQS_QUEUE_URL = 'https://sqs.us-east-1.amazonaws.com/831785949054/SubmissionQueue'
 
 # AWS SQS client setup
-sqs_client = boto3.client('sqs')
+sqs_client = boto3.client('sqs', region_name='us-east-1') 
 
 def setup_user(user_choice):
     weight_time = 0.5  # wt
@@ -64,17 +64,14 @@ def receive_matrix():
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/send-to-sqs', methods=['POST'])
-def send_to_sqs():
-    """ Send userId and allocVector to SQS queue """
-    try:
-        data = request.get_json()
-        
-        user_id = data.get('userId')
-        alloc_vector = data.get('allocVector')
+def send_to_sqs(user):
+    try:        
+        user_id = user['userId']
+        alloc_vector = [0, 1, 1, 0, 0]
 
         if not user_id or not alloc_vector:
-            return jsonify({'message': 'Invalid input, userId or allocVector missing'}), 400
+            print('Invalid input, userId or allocVector missing')
+            return
 
         message_body = {
             'userId': user_id,
@@ -89,20 +86,14 @@ def send_to_sqs():
 
         print(f"Sent to SQS: {response['MessageId']}")
 
-        return jsonify({'message': 'Data sent to SQS successfully', 'messageId': response['MessageId']}), 200
-
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        print(f"Error sending message to SQS: {str(e)}")
 
+
+user_input = int(input("Enter user choice (1, 2, or 3): "))
+user_data = setup_user(user_input)
+
+send_to_sqs(user_data)
 
 if __name__ == "__main__":
-    try:
-        user_input = int(input("Enter user choice (1, 2, or 3): "))
-        user_data = setup_user(user_input)
-        print("User data initialized:", user_data)
-
-        # Start the Flask server after setting up the user
-        app.run(host='0.0.0.0', port=5000, debug=True)
-
-    except ValueError as e:
-        print("Error:", e)
+    app.run(host='0.0.0.0', port=5000, debug=False)
