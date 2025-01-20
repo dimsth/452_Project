@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 import boto3
 import json
+import itertools
 
 app = Flask(__name__)
 
@@ -10,15 +11,33 @@ SQS_QUEUE_URL = 'https://sqs.us-east-1.amazonaws.com/831785949054/SubmissionQueu
 # AWS SQS client setup
 sqs_client = boto3.client('sqs', region_name='us-east-1') 
 
+# Weight coefficients
+weight_time = 0.5  # wt
+weight_expense = 0.5  # we
+
+# Price vector and execution time matrixa
+price_vector = [1, 1.2, 1.5, 1.8, 2]  # p
+t_hat = [
+    [6, 5, 4, 3.5, 3],
+    [5, 4.2, 3.6, 3, 2.8],
+    [4, 3.5, 3.2, 2.8, 2.4]
+]
+
+initial_vector = [0,0,0,0,0]
+initial_util = 0
+
+def calc_utilfunction(T, E):
+    global weight_time
+    global weight_expense
+
+    max_execution_time = max(T)
+    sum_costs = sum(E)
+
+    return 1 / (weight_time * max_execution_time + weight_expense * sum_costs)
+
 def setup_user(user_choice):
-    weight_time = 0.5  # wt
-    weight_expense = 0.5  # we
-    price_vector = [1, 1.2, 1.5, 1.8, 2]  # p
-    execution_time_matrix = [
-        [6, 5, 4, 3.5, 3], 
-        [5, 4.2, 3.6, 3, 2.8], 
-        [4, 3.5, 3.2, 2.8, 2.4]
-    ]  # t_hat
+    global price_vector
+    global t_hat
 
     # User-specific configurations
     user_configs = {
@@ -32,31 +51,56 @@ def setup_user(user_choice):
 
     user_info = user_configs[user_choice]
 
+    num_resources = len(price_vector)
+
+    resource_combinations = list(itertools.product([0, 1], repeat=num_resources))
+    
+    valid_combinations = [combo for combo in resource_combinations if sum(combo) == user_info["num_subtasks"]]
+
+    optimal_utility = float('-inf')
+    allocVector = [0, 0, 0, 0, 0]
+
+    for assignment in valid_combinations:
+        selected_execution_times = [t_hat[user_info["userId"] - 1][i] for i in range(num_resources) if assignment[i] == 1]
+        selected_costs = [t_hat[user_info["userId"] - 1][i] * price_vector[i] for i in range(num_resources) if assignment[i] == 1]
+
+        max_execution_time = max(selected_execution_times)
+        sum_costs = sum(selected_costs)
+
+        print(f"Trying: {assignment}, Execution Time: {max_execution_time}, Sum of Expense: {sum_costs}, Expense: {0.5 * max_execution_time + 0.5 * sum_costs}")
+
+        if max_execution_time <= user_info["max_time"] and (0.5 * max_execution_time + 0.5 * sum_costs) <= user_info["max_expense"]:
+            utility = calc_utilfunction(selected_execution_times, selected_costs)
+
+            if utility > optimal_utility:
+                optimal_utility = utility
+                allocVector = assignment
+
     user = {
         "userId": user_info["userId"],
         "num_subtasks": user_info["num_subtasks"],
         "max_time": user_info["max_time"],
         "max_expense": user_info["max_expense"],
-        "weight_time": weight_time,
-        "weight_expense": weight_expense,
-        "price_vector": price_vector,
-        "execution_time_matrix": execution_time_matrix
+        "initial_util": optimal_utility,
+        "allocVector": allocVector,
     }
 
     return user
 
 @app.route('/receive', methods=['POST'])
 def receive_matrix():
-    """ Receive the matrix from the resource manager """
     try:
         data = request.get_json()
         user_id = data.get('userId')
-        result_matrix = data.get('resultMatrix')
+        T = data.get('T')
+        E = data.get('E')
 
-        if not user_id or not result_matrix:
+        if not user_id or not T or not E:
             return jsonify({'message': 'Invalid input, userId or resultMatrix missing'}), 400
 
-        print(f"Received matrix for user {user_id}: {result_matrix}")
+        calculated_utility = calc_utilfunction(T, E)
+        print(f"Received matrix for user {user_id} with calculated utility: {calculated_utility}")
+
 
         return jsonify({'message': 'Matrix received successfully'}), 200
 
@@ -67,7 +111,7 @@ def receive_matrix():
 def send_to_sqs(user):
     try:        
         user_id = user['userId']
-        alloc_vector = [0, 1, 1, 0, 0]
+        alloc_vector = user['allocVector']
 
         if not user_id or not alloc_vector:
             print('Invalid input, userId or allocVector missing')
@@ -92,6 +136,8 @@ def send_to_sqs(user):
 
 user_input = int(input("Enter user choice (1, 2, or 3): "))
 user_data = setup_user(user_input)
+
+print(user_data)
 
 send_to_sqs(user_data)
 
