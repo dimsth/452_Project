@@ -1,21 +1,23 @@
 from flask import Flask, request, jsonify
 import requests
 import json
+import socket
+import http.client
 
 app = Flask(__name__)
 
 # Placeholder for execution time matrix (t_hat)
 t_hat = [
-    [6, 5, 4, 3.5, 3], 
-    [5, 4.2, 3.6, 3, 2.8], 
+    [6, 5, 4, 3.5, 3],
+    [5, 4.2, 3.6, 3, 2.8],
     [4, 3.5, 3.2, 2.8, 2.4]
 ]
 
 # EC2 instances to send results to (replace with actual EC2 private/public IPs)
 EC2_INSTANCES = [
-    "http://ec2-instance-1-ip:5000/receive",
-    "http://ec2-instance-2-ip:5000/receive",
-    "http://ec2-instance-3-ip:5000/receive"
+    ("ec2-instance-2-ip", 5000),  # Tuple of (IP, port)
+    # ("ec2-instance-2-ip", 5000),
+    # ("ec2-instance-3-ip", 5000)
 ]
 
 @app.route('/process', methods=['POST'])
@@ -23,8 +25,8 @@ def process_request():
     try:
         data = request.get_json()
 
-        user_id = data.get('userId')
-        alloc_vector = data.get('allocVector')
+        user_id = int(data.get('userId'))
+        alloc_vector = list(map(int, data.get('allocVector', [])))
 
         if not user_id or not alloc_vector:
             return jsonify({'message': 'Invalid input, userId or allocVector missing'}), 400
@@ -43,22 +45,38 @@ def process_request():
         return jsonify({'error': str(e)}), 500
 
 
-def send_results_to_ec2(user_id, matrix):
-    headers = {'Content-Type': 'application/json'}
-    payload = {
-        'userId': user_id,
-        'resultMatrix': matrix
-    }
+def send_results_to_ec2(user_id, result_matrix):
+    """ Send the corresponding row from t_hat to external EC2 instances via HTTP POST """
 
-    for ec2_url in EC2_INSTANCES:
+    if user_id not in [1, 2, 3]:
+        print("Invalid user ID. Must be 1, 2, or 3.")
+        return
+
+    matrix_row = result_matrix[user_id - 1]
+
+    payload = json.dumps({
+        'userId': user_id,
+        'resultMatrix': matrix_row
+    })
+
+    for ec2_ip, ec2_port in EC2_INSTANCES:
         try:
-            response = requests.post(ec2_url, data=json.dumps(payload), headers=headers)
-            if response.status_code == 200:
-                print(f"Successfully sent matrix to {ec2_url}")
-            else:
-                print(f"Failed to send matrix to {ec2_url}, status code: {response.status_code}")
+            # Create HTTP connection to EC2 instance
+            conn = http.client.HTTPConnection(ec2_ip, ec2_port)
+            headers = {'Content-Type': 'application/json'}
+
+            # Correctly formatted HTTP POST request with version
+            conn.request("POST", "/receive", body=payload, headers=headers)
+
+            response = conn.getresponse()
+            response_data = response.read().decode('utf-8')
+
+            print(f"Sent matrix row for user {user_id} to {ec2_ip}:{ec2_port}, Response: {response.status}, {response_data}")
+            conn.close()
+
         except Exception as e:
-            print(f"Error sending to {ec2_url}: {e}")
+            print(f"Error sending to {ec2_ip}:{ec2_port} - {e}")
+
 
 
 if __name__ == '__main__':
