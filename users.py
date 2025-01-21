@@ -140,6 +140,8 @@ def send_to_sqs(user):
 user_input = int(input("Enter user choice (1, 2, or 3): "))
 user_data = setup_user(user_input)
 
+print(user_data)
+
 send_to_sqs(user_data)
 
 if __name__ == "__main__":
