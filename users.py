@@ -69,7 +69,7 @@ def setup_user(user_choice):
 
         print(f"Trying: {assignment}, Execution Time: {max_execution_time}, Sum of Expense: {sum_costs}")
 
-        if (user_info["max_time"] > 0 and max_execution_time <= user_info["max_time"]) and (user_info["max_expense"] > 0 and sum_costs <= user_info["max_expense"]):
+        if (user_info["max_time"] == 0 or max_execution_time <= user_info["max_time"]) and (user_info["max_expense"] == 0 or sum_costs <= user_info["max_expense"]):
             utility = calc_utilfunction(selected_execution_times, selected_costs)
 
             if utility > optimal_utility:
