@@ -41,9 +41,9 @@ def setup_user(user_choice):
 
     # User-specific configurations
     user_configs = {
-        1: {"userId": 1, "num_subtasks": 2, "max_time": 6, "max_expense": 6},
-        2: {"userId": 2, "num_subtasks": 3, "max_time": 5, "max_expense": 5},
-        3: {"userId": 3, "num_subtasks": 4, "max_time": 4, "max_expense": 4},
+        1: {"userId": 1, "num_subtasks": 2, "max_time": 0, "max_expense": 0},
+        2: {"userId": 2, "num_subtasks": 3, "max_time": 0, "max_expense": 0},
+        3: {"userId": 3, "num_subtasks": 4, "max_time": 0, "max_expense": 0},
     }
 
     if user_choice not in user_configs:
@@ -67,9 +67,9 @@ def setup_user(user_choice):
         max_execution_time = max(selected_execution_times)
         sum_costs = sum(selected_costs)
 
-        print(f"Trying: {assignment}, Execution Time: {max_execution_time}, Sum of Expense: {sum_costs}, Expense: {0.5 * max_execution_time + 0.5 * sum_costs}")
+        print(f"Trying: {assignment}, Execution Time: {max_execution_time}, Sum of Expense: {sum_costs}")
 
-        if max_execution_time <= user_info["max_time"] and (0.5 * max_execution_time + 0.5 * sum_costs) <= user_info["max_expense"]:
+        if (user_info["max_time"] > 0 and max_execution_time <= user_info["max_time"]) and (user_info["max_expense"] > 0 and sum_costs <= user_info["max_expense"]):
             utility = calc_utilfunction(selected_execution_times, selected_costs)
 
             if utility > optimal_utility:
@@ -89,6 +89,7 @@ def setup_user(user_choice):
 
 @app.route('/receive', methods=['POST'])
 def receive_matrix():
+    global user_data
     try:
         data = request.get_json()
         user_id = data.get('userId')
@@ -99,7 +100,9 @@ def receive_matrix():
             return jsonify({'message': 'Invalid input, userId or resultMatrix missing'}), 400
 
         calculated_utility = calc_utilfunction(T, E)
-        print(f"Received matrix for user {user_id} with calculated utility: {calculated_utility}")
+        print("--------------------------------------------------------------------------------------------------------------------\n")
+        print(f"userId: {user_data['userId']} | intial alloc vector: {user_data['allocVector']} | inital util: {user_data['initial_util']} | final util:{calculated_utility}")
+        print("\n--------------------------------------------------------------------------------------------------------------------\n")
 
 
         return jsonify({'message': 'Matrix received successfully'}), 200
@@ -136,8 +139,6 @@ def send_to_sqs(user):
 
 user_input = int(input("Enter user choice (1, 2, or 3): "))
 user_data = setup_user(user_input)
-
-print(user_data)
 
 send_to_sqs(user_data)
 
